@@ -1,0 +1,396 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
+  <meta name="description" content="MBTI 16型人格职业性格测试，发现你的职业性格密码">
+  <title>MBTI职业性格测试</title>
+
+  <!-- Vant CSS -->
+  <!-- <link rel="stylesheet" href="https://unpkg.com/vant@4/lib/index.css"> -->
+  <link rel="stylesheet" href="css/vant4/index.css">
+  <!-- 自定义样式 -->
+  <link rel="stylesheet" href="css/style.css">
+</head>
+<body>
+
+<div id="app"></div>
+
+<!-- ========== App 根模板 ========== -->
+<script type="text/x-template" id="app-template">
+  <router-view v-slot="{ Component }">
+    <transition name="fade" mode="out-in">
+      <component :is="Component" />
+    </transition>
+  </router-view>
+  <!-- 海报容器（隐藏） -->
+  <div id="poster-container"></div>
+</script>
+
+<!-- ========== 首页模板 ========== -->
+<script type="text/x-template" id="home-template">
+  <div class="home-page">
+    <div class="home-header">
+      <div class="home-icon">&#x1F9E0;</div>
+      <h1 class="home-title">发现你的职业性格密码</h1>
+      <p class="home-subtitle">MBTI 16 型人格测试</p>
+    </div>
+
+    <div class="home-card">
+      <!-- 用户信息表单 -->
+      <div class="user-form">
+        <div class="form-title">请输入您的信息</div>
+        <van-field
+          v-model="userName"
+          label="姓名"
+          placeholder="请输入您的姓名"
+          :rules="[{ required: true, message: '请输入姓名' }]"
+          class="form-field required-field"
+        />
+        <van-field
+          v-model="userPhone"
+          label="手机号"
+          placeholder="请输入您的手机号"
+          type="tel"
+          maxlength="11"
+          :rules="[{ required: true, message: '请输入手机号' }]"
+          class="form-field required-field"
+        />
+        <!-- 岗位字段暂时隐藏，后续需要时可取消注释
+        <van-field
+          v-model="userPosition"
+          label="岗位"
+          placeholder="请输入您的岗位"
+          class="form-field required-field"
+        />
+        -->
+      </div>
+
+      <ul class="home-info-list">
+        <li class="home-info-item">
+          <span class="home-info-icon purple">&#x1F4CB;</span>
+          <span>36 道精选题目，全面覆盖四大维度</span>
+        </li>
+        <li class="home-info-item">
+          <span class="home-info-icon blue">&#x23F1;</span>
+          <span>约 5-8 分钟，轻松完成测试</span>
+        </li>
+      </ul>
+
+      <van-button
+        class="home-start-btn"
+        type="primary"
+        size="large"
+        round
+        color="#4F46E5"
+        @click="startTest"
+      >
+        开始测试
+      </van-button>
+
+      <!-- 查询结果按钮 -->
+      <van-button
+        class="home-query-btn"
+        type="default"
+        size="large"
+        round
+        plain
+        color="#4F46E5"
+        @click="queryResult"
+      >
+        查询我的结果
+      </van-button>
+    </div>
+
+    <!-- <div class="home-footer">
+      <p>本测试基于 MBTI 理论框架设计</p>
+      <p>仅供参考，非专业心理诊断工具</p>
+    </div> -->
+  </div>
+</script>
+
+<!-- ========== 答题页模板 ========== -->
+<script type="text/x-template" id="test-template">
+  <div class="test-page">
+    <!-- 顶部导航 -->
+    <van-nav-bar
+      class="test-navbar"
+      title="MBTI职业性格测试"
+      left-arrow
+      @click-left="goBack"
+    >
+      <template #right>
+        <span class="test-timer">{{ state.timer.display }}</span>
+      </template>
+    </van-nav-bar>
+
+    <!-- 进度条 -->
+    <div class="test-progress-wrap">
+      <div class="test-progress-text">
+        <span class="question-counter">
+          <span class="current-q">{{ state.currentIndex + 1 }}</span>
+          <span class="q-separator">/</span>
+          <span class="total-q">{{ state.maxQuestionsNum }}</span>
+        </span>
+        <span class="progress-percent">
+          <span class="percent-value">{{ progressPercent }}</span>
+          <span class="percent-symbol">%</span>
+        </span>
+      </div>
+      <van-progress
+        :percentage="progressPercent"
+        color="#4F46E5"
+        track-color="#EDE9FE"
+        :stroke-width="8"
+        :show-pivot="false"
+      />
+    </div>
+
+    <!-- 题目区域 -->
+    <div class="test-content">
+      <transition :name="'slide-' + direction" mode="out-in">
+        <div class="test-question-card" :key="state.currentIndex" v-if="currentQuestion">
+          <div class="test-question-no">
+            <span class="q-label">Question</span>
+            <span class="q-number">{{ currentQuestion.questionNo }}</span>
+          </div>
+          <div class="test-question-text">{{ currentQuestion.text }}</div>
+
+          <div class="test-options">
+            <div
+              class="test-option"
+              :class="{ selected: currentAnswer === 'A' }"
+              @click="selectOption('A')"
+            >
+              <span class="test-option-label">A</span>
+              <span>{{ currentQuestion.optionA }}</span>
+            </div>
+
+            <div
+              class="test-option"
+              :class="{ selected: currentAnswer === 'B' }"
+              @click="selectOption('B')"
+            >
+              <span class="test-option-label">B</span>
+              <span>{{ currentQuestion.optionB }}</span>
+            </div>
+          </div>
+        </div>
+      </transition>
+    </div>
+
+    <!-- 底部导航 -->
+    <div class="test-nav-bar">
+      <van-button
+        v-if="state.currentIndex > 0"
+        plain
+        type="default"
+        @click="goPrev"
+      >
+        上一题
+      </van-button>
+      <van-button
+        v-if="state.currentIndex < state.maxQuestionsNum - 1"
+        type="primary"
+        color="#4F46E5"
+        @click="goNext"
+      >
+        下一题
+      </van-button>
+      <van-button
+        v-if="state.currentIndex === state.maxQuestionsNum - 1"
+        type="primary"
+        color="#4F46E5"
+        @click="submitTest"
+      >
+        提交
+      </van-button>
+    </div>
+  </div>
+</script>
+
+<!-- ========== 结果页模板 ========== -->
+<script type="text/x-template" id="result-template">
+  <div class="result-page" v-if="!loading && personality">
+    <!-- 顶部结果展示 -->
+    <div class="result-header" :style="{ background: 'linear-gradient(135deg, ' + personality.color + ', ' + personality.color + 'CC)' }">
+      <div class="result-label">你的职业性格类型是</div>
+      <div class="result-type-badge">{{ personality.type }}</div>
+      <!-- <div class="result-type-name">{{ personality.name }}</div> -->
+      <div class="result-type-subtitle">{{ personality.subtitle }}</div>
+      <!-- 用户信息 -->
+      <div class="result-user-info" v-if="resultData.userName || resultData.userPhone || resultData.durationSeconds">
+        <span v-if="resultData.userName" class="user-info-item">
+          <span class="user-icon">&#x1F464;</span>
+          <span class="user-name">{{ resultData.userName }}</span>
+        </span>
+        <span v-if="resultData.userPhone" class="user-info-item">
+          <span class="user-icon">&#x1F4F1;</span>
+          <span class="user-phone">{{ maskPhone(resultData.userPhone) }}</span>
+        </span>
+        <!-- 岗位字段暂时隐藏，后续需要时可取消注释
+        <span v-if="resultData.userPosition" class="user-info-item">
+          <span class="user-icon">&#x1F4BC;</span>
+          <span class="user-position">{{ resultData.userPosition }}</span>
+        </span>
+        -->
+        <span v-if="resultData.durationSeconds" class="user-info-item">
+          <span class="user-icon">&#x23F1;</span>
+          <span class="user-duration">{{ formatDuration(resultData.durationSeconds) }}</span>
+        </span>
+      </div>
+    </div>
+
+    <!-- 维度得分 -->
+    <div class="result-section">
+      <div class="result-section-title" :style="{ '--bar-color': personality.color }">
+        <span :style="{ borderLeft: '4px solid ' + personality.color, paddingLeft: '8px' }">维度分析</span>
+      </div>
+      <div v-for="(dim, idx) in dimensions" :key="idx" class="dimension-row">
+        <div class="dimension-label">
+          <div class="dimension-label-letter" :style="{ color: getDimensionColor(dim, 'left') }">{{ dim.left.label }}</div>
+          <div class="dimension-label-name">{{ dim.left.name }}</div>
+        </div>
+        <div class="dimension-bar-wrap">
+          <div class="dimension-bar" :style="{ width: dim.left.percent + '%', background: personality.color }"></div>
+        </div>
+        <div class="dimension-label">
+          <div class="dimension-label-letter" :style="{ color: getDimensionColor(dim, 'right') }">{{ dim.right.label }}</div>
+          <div class="dimension-label-name">{{ dim.right.name }}</div>
+        </div>
+      </div>
+    </div>
+
+    <!-- 性格特点 -->
+    <div class="result-section">
+      <div class="result-section-title">
+        <span :style="{ borderLeft: '4px solid ' + personality.color, paddingLeft: '8px' }">性格描述</span>
+      </div>
+      <div class="description-text">{{ personality.description }}</div>
+    </div>
+
+    <!-- 优势 -->
+    <div class="result-section">
+      <div class="result-section-title">
+        <span :style="{ borderLeft: '4px solid ' + personality.color, paddingLeft: '8px' }">性格优点</span>
+      </div>
+      <div class="tag-list">
+        <span
+          v-for="(s, i) in personality.strengths"
+          :key="i"
+          class="tag-item"
+          :style="{ background: personality.color + '15', color: personality.color }"
+        >{{ s }}</span>
+      </div>
+    </div>
+
+    <!-- 可能的挑战 -->
+    <div class="result-section">
+      <div class="result-section-title">
+        <span :style="{ borderLeft: '4px solid #FF9800', paddingLeft: '8px' }">性格缺点</span>
+      </div>
+      <div class="tag-list">
+        <span
+          v-for="(w, i) in personality.weaknesses"
+          :key="i"
+          class="tag-item"
+          style="background: #FFF3E0; color: #E65100;"
+        >{{ w }}</span>
+      </div>
+    </div>
+
+    <!-- 推荐职业 -->
+    <div class="result-section">
+      <div class="result-section-title">
+        <span :style="{ borderLeft: '4px solid ' + personality.color, paddingLeft: '8px' }">推荐职业</span>
+      </div>
+      <div class="career-grid">
+        <div
+          v-for="(c, i) in personality.careers.slice(0, 4)"
+          :key="i"
+          class="career-item"
+          :style="{ background: personality.color + '08' }"
+        >{{ c }}</div>
+      </div>
+    </div>
+
+    <!-- 代表人物 -->
+    <div class="result-section">
+      <div class="result-section-title">
+        <span :style="{ borderLeft: '4px solid ' + personality.color, paddingLeft: '8px' }">代表人物</span>
+      </div>
+      <div class="celebrity-list">
+        <span v-for="(c, i) in personality.celebrities" :key="i" class="celebrity-item">{{ c }}</span>
+      </div>
+    </div>
+
+    <!-- 底部按钮 -->
+    <div class="result-bottom-bar">
+      <van-button
+        plain
+        type="primary"
+        :color="personality.color"
+        :loading="generatingPoster"
+        loading-text="生成中..."
+        @click="generatePoster"
+      >
+        生成海报
+      </van-button>
+      <van-button
+        type="primary"
+        :color="personality.color"
+        @click="retakeTest"
+      >
+        再测一次
+      </van-button>
+    </div>
+
+    <!-- 海报预览弹层 -->
+    <van-overlay :show="showPoster" @click="closePoster" z-index="200">
+      <div class="poster-preview" @click.stop>
+        <img v-if="posterUrl" :src="posterUrl" alt="测试结果海报" />
+        <div class="poster-preview-tip">长按图片保存到相册</div>
+        <div class="poster-close-btn" @click="closePoster">
+          <span class="poster-close-icon">&#x2715;</span>
+          <span>关闭</span>
+        </div>
+      </div>
+    </van-overlay>
+  </div>
+
+  <!-- 加载中 -->
+  <div v-else-if="loading" class="result-page" style="display:flex;align-items:center;justify-content:center;">
+    <van-loading type="spinner" color="#4F46E5" size="36px">加载中...</van-loading>
+  </div>
+</script>
+
+<!-- ========== CDN 依赖 ========== -->
+<!-- <script src="https://unpkg.com/vue@3/dist/vue.global.js"></script>
+<script src="https://unpkg.com/vue-router@4/dist/vue-router.global.prod.js"></script>
+<script src="https://unpkg.com/vant@4/lib/vant.min.js"></script>
+<script src="https://unpkg.com/axios/dist/axios.min.js"></script>
+<script src="https://unpkg.com/html2canvas@1.4.1/dist/html2canvas.min.js"></script> -->
+
+<script src="js/vue/vue.global.js"></script>
+<script src="js/vue-router/vue-router.global.prod.js"></script>
+<script src="js/vant/vant.min.js"></script>
+<script src="js/axios/axios.min.js"></script>
+<script src="js/html2canvas/html2canvas.min.js"></script>
+
+<!-- ========== 应用代码（按依赖顺序加载） ========== -->
+<!-- 数据 -->
+<script src="js/data/questions.js"></script>
+<script src="js/data/personalities.js"></script>
+<!-- 工具 -->
+<script src="js/utils/mbti.js"></script>
+<script src="js/utils/api.js"></script>
+<script src="js/utils/poster.js"></script>
+<!-- 页面组件 -->
+<script src="js/pages/home.js"></script>
+<script src="js/pages/test.js"></script>
+<script src="js/pages/result.js"></script>
+<!-- 应用初始化（最后加载） -->
+<script src="js/app.js"></script>
+
+</body>
+</html>
